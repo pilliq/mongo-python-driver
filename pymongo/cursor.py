@@ -71,7 +71,7 @@ class Cursor(object):
                  tag_sets=[{}], secondary_acceptable_latency_ms=None,
                  exhaust=False, compile_re=True, _must_use_master=False,
                  _uuid_subtype=None, _first_batch=None, _cursor_id=None,
-                 **kwargs):
+                 _keep_alive=False, **kwargs):
         """Create a new cursor.
 
         Should not be called directly by application developers - see
@@ -105,6 +105,9 @@ class Cursor(object):
             raise TypeError("partial must be an instance of bool")
         if not isinstance(exhaust, bool):
             raise TypeError("exhaust must be an instance of bool")
+        if not isinstance(_keep_alive, bool):
+            raise TypeError("_keep_alive must be an instance of bool")
+
 
         if fields is not None:
             if not fields:
@@ -124,6 +127,7 @@ class Cursor(object):
         self.__batch_size = 0
         self.__max = None
         self.__min = None
+        self.__keep_alive = _keep_alive
 
         # Exhaust cursor support
         if self.__collection.database.connection.is_mongos and exhaust:
@@ -239,6 +243,12 @@ class Cursor(object):
         clone.__dict__.update(data)
         return clone
 
+    def __revive_cursor(self, cursor_id, retrieved=0, batch_size=0):
+        self.__id = cursor_id
+        self.__retrieved = retrieved
+        self.__batch_size = batch_size
+        return self
+
     def __die(self):
         """Closes this cursor.
         """
@@ -249,11 +259,12 @@ class Cursor(object):
                 # to stop the server from sending more data.
                 self.__exhaust_mgr.sock.close()
             else:
-                connection = self.__collection.database.connection
-                if self.__connection_id is not None:
-                    connection.close_cursor(self.__id, self.__connection_id)
-                else:
-                    connection.close_cursor(self.__id)
+                if self.__keep_alive is False:
+                    connection = self.__collection.database.connection
+                    if self.__connection_id is not None:
+                        connection.close_cursor(self.__id, self.__connection_id)
+                    else:
+                        connection.close_cursor(self.__id)
         if self.__exhaust and self.__exhaust_mgr:
             self.__exhaust_mgr.close()
         self.__killed = True

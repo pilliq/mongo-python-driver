@@ -31,6 +31,7 @@ from pymongo import (ASCENDING,
                      DESCENDING,
                      ALL,
                      OFF)
+from pymongo.cursor import Cursor
 from pymongo.database import Database
 from pymongo.errors import (InvalidOperation,
                             OperationFailure,
@@ -50,6 +51,21 @@ class TestCursor(unittest.TestCase):
 
     def tearDown(self):
         self.db = None
+
+    def test_keep_alive(self):
+        client = get_client()
+        self.db.keep_alive.remove()
+        for x in range(10):
+            self.db.keep_alive.insert({'phillip': 1})
+        cursor = self.db.keep_alive.find(_keep_alive=True).batch_size(5)
+        x = cursor.next()
+        cursor_id = cursor.cursor_id
+        cursor.close()
+
+        new_cursor = Cursor(self.db.keep_alive)._Cursor__revive_cursor(cursor_id,
+                                                                       retrieved=5,
+                                                                       batch_size=5)
+        self.assertEqual(new_cursor.next()['phillip'], 1)
 
     def test_max_time_ms(self):
         if not version.at_least(self.db.connection, (2, 5, 3, -1)):
